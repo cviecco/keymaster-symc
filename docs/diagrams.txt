@@ -1,0 +1,54 @@
+
+
+
+
+title First Token Registration (success flow)
+
+participant User
+participant u2f Token
+Client->Server: username + password 
+note right of Server: Verify username and password.\nYes, you have no tokens. \n Notice: this entry point is requires no authn
+Server->Client: app id(a), challenge
+Client -> u2f Token : a, (challenge | origin) (c)
+User-> u2f Token: touch
+u2f Token -> Client: k_pub, h, cert, signature(a,c,h_kpub) (s)
+Client->Server: c, k_pub, h, cert, state over  
+note right of Server: Verifies cert + signature. \nSaves username + h + k_pub in DB \nMints new cookie associated to the user
+Server -> Client: success + cookie
+
+
+
+title Gen Cert Flow (success)
+
+participant User
+participant u2f Token
+Client->Server: username + password OR cookie 
+note right of Server: Endpoint with auth.\nLookups handle (h), k_pub from DB
+Server->Client: h, app id(a), challenge
+Client -> u2f Token : h,a, (challenge |origin) (c), blink
+User -> u2f Token: touch
+u2f Token -> Client: counte, signature(a,c,counter) (s)
+Client->Server: counter, c, s 
+note right of Server: Check signature aginst k_pub
+Server -> Client: success (ssh cert) + cookie
+
+
+title Nth Token Registration (success flow with no valid cookie)
+
+participant User
+participant New u2f Token
+participant Registered u2f Token
+Client->Server: username + password
+note right of Server: Endpoint with auth.\nLookups handle (h), k_pub from DB
+Server->Client: app id(a), challenge
+Client -> Registered u2f Token : a, (challenge | origin) (c)
+User-> Registered u2f Token: touch
+Registered u2f Token -> Client: counte, signature(a,c,counter) (s)
+Client->Server: c, k_pub, h, cert, state over  
+note right of Server: New cookie
+Server -> Client: please ask user to swap token + cookie
+Client -> User: plase swap token
+note right of Client: Waits for confirmation from user\n Proceeds with regural token registration
+
+
+
