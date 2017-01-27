@@ -143,6 +143,8 @@ func main() {
 	//io.ReadFull(rand.Reader, app)
 	reqAppID := sha256.Sum256([]byte(webRegRequest.AppID))
 	reqChallenge := sha256.Sum256(tokenRegistrationBuf.Bytes())
+	app = reqAppID[:]
+	challenge = reqChallenge[:]
 
 	var res []byte
 	log.Println("registering, provide user presence")
