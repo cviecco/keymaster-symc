@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	//"crypto/tls"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -158,6 +159,10 @@ func main() {
 		}
 		break
 	}
+	var registrationRequestResponse u2f.RegisterResponse
+	registrationRequestResponse.RegistrationData = base64.RawURLEncoding.EncodeToString(res)
+	registrationRequestResponse.Version = version
+	registrationRequestResponse.ClientData = base64.RawURLEncoding.EncodeToString(tokenRegistrationBuf.Bytes())
 
 	log.Printf("registered: %x", res)
 	res = res[66:]
@@ -167,6 +172,22 @@ func main() {
 	log.Printf("key handle: %x", keyHandle)
 
 	dev.Close()
+
+	log.Printf("%+v\n", registrationRequestResponse)
+
+	webRegRequestBuf := &bytes.Buffer{}
+	err = json.NewEncoder(webRegRequestBuf).Encode(registrationRequestResponse)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	webRegRequest2, err := http.NewRequest("POST", "/someurl", webRegRequestBuf)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rr2 := httptest.NewRecorder()
+	registerResponse(rr2, webRegRequest2)
+	log.Printf("request=%s\n", rr2.Body.String()) // rr.Body is a *bytes.Buffer
 
 	log.Println("reconnecting to device in 3 seconds...")
 	time.Sleep(3 * time.Second)
