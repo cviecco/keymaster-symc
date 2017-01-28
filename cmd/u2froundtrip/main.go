@@ -79,6 +79,59 @@ func registerResponse(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("success"))
 }
 
+func signRequest(w http.ResponseWriter, r *http.Request) {
+	if registrations == nil {
+		http.Error(w, "registration missing", http.StatusBadRequest)
+		return
+	}
+
+	c, err := u2f.NewChallenge(appID, trustedFacets)
+	if err != nil {
+		log.Printf("u2f.NewChallenge error: %v", err)
+		http.Error(w, "error", http.StatusInternalServerError)
+		return
+	}
+	challenge = c
+
+	req := c.SignRequest(registrations)
+
+	log.Printf("Sign request: %+v", req)
+	json.NewEncoder(w).Encode(req)
+}
+
+func signResponse(w http.ResponseWriter, r *http.Request) {
+	var signResp u2f.SignResponse
+	if err := json.NewDecoder(r.Body).Decode(&signResp); err != nil {
+		http.Error(w, "invalid response: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("signResponse: %+v", signResp)
+
+	if challenge == nil {
+		http.Error(w, "challenge missing", http.StatusBadRequest)
+		return
+	}
+	if registrations == nil {
+		http.Error(w, "registration missing", http.StatusBadRequest)
+		return
+	}
+
+	var err error
+	for _, reg := range registrations {
+		newCounter, authErr := reg.Authenticate(signResp, *challenge, counter)
+		if authErr == nil {
+			log.Printf("newCounter: %d", newCounter)
+			counter = newCounter
+			w.Write([]byte("success"))
+			return
+		}
+	}
+
+	log.Printf("VerifySignResponse error: %v", err)
+	http.Error(w, "error verifying response", http.StatusInternalServerError)
+}
+
 func prefilght() {
 	exampleSum1 := sha256.Sum256([]byte(clientDataExample))
 	log.Printf("exampleSum=%s\n", hex.EncodeToString(exampleSum1[:]))
@@ -189,6 +242,25 @@ func main() {
 	registerResponse(rr2, webRegRequest2)
 	log.Printf("request=%s\n", rr2.Body.String()) // rr.Body is a *bytes.Buffer
 
+	///////////////////registration done!
+
+	httpSignRequest, err := http.NewRequest("GET", "/someurl", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rr3 := httptest.NewRecorder()
+	signRequest(rr3, httpSignRequest)
+	log.Printf("signRequest=%s\n", rr3.Body.String()) // rr.Body is a *bytes.Buffer
+
+	var webSignRequest u2f.WebSignRequest
+	if err := json.NewDecoder(rr3.Body).Decode(&webSignRequest); err != nil {
+		//http.Error(w, "invalid response: "+err.Error(), http.StatusBadRequest)
+		//        return
+		log.Fatal(err)
+	}
+	log.Printf("%+v\n", webSignRequest)
+
+	////
 	log.Println("reconnecting to device in 3 seconds...")
 	time.Sleep(3 * time.Second)
 
@@ -213,7 +285,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	io.ReadFull(rand.Reader, challenge)
+	//io.ReadFull(rand.Reader, challenge)
 	log.Println("authenticating, provide user presence")
 	for {
 		res, err := t.Authenticate(req)
