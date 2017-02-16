@@ -284,6 +284,7 @@ func main() {
 	if err := t.CheckAuthenticate(req); err != nil {
 		log.Fatal(err)
 	}
+	//some random change
 
 	//io.ReadFull(rand.Reader, challenge)
 	log.Println("authenticating, provide user presence")
