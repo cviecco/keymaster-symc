@@ -2,13 +2,13 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
+	//"crypto/rand"
 	//"crypto/tls"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"io"
+	//"io"
 	"log"
 	"net/http"
 	"time"
@@ -259,6 +259,13 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("%+v\n", webSignRequest)
+	for i, rKeyHandle := range webSignRequest.RegisteredKeys {
+		khfoo, err := base64.RawURLEncoding.DecodeString(rKeyHandle.KeyHandle)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("index=%d handle=%x\n", i, khfoo)
+	}
 
 	////
 	log.Println("reconnecting to device in 3 seconds...")
@@ -274,13 +281,25 @@ func main() {
 		log.Fatal(err)
 	}
 	t = u2ftoken.NewToken(dev)
+	//io.ReadFull(rand.Reader, challenge)
+	reqSignChallenge := sha256.Sum256([]byte(webSignRequest.Challenge))
+	challenge = reqSignChallenge[:]
+	reqSingApp := sha256.Sum256([]byte(webSignRequest.AppID))
+	app = reqSingApp[:]
 
-	io.ReadFull(rand.Reader, challenge)
+	decodedHandle, err := base64.RawURLEncoding.DecodeString(webSignRequest.RegisteredKeys[0].KeyHandle)
+	if err != nil {
+		log.Fatal(err)
+	}
+	keyHandle = decodedHandle
+
 	req := u2ftoken.AuthenticateRequest{
 		Challenge:   challenge,
 		Application: app,
 		KeyHandle:   keyHandle,
 	}
+
+	log.Printf("%+v", req)
 	if err := t.CheckAuthenticate(req); err != nil {
 		log.Fatal(err)
 	}
@@ -310,4 +329,7 @@ func main() {
 	} else {
 		log.Println("no wink capability")
 	}
+
+	// now we do the last request
+
 }
