@@ -6,8 +6,10 @@ import (
 	//"crypto/tls"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	//"fmt"
 	//"io"
 	"log"
 	"net/http"
@@ -16,8 +18,8 @@ import (
 	"net/http/httptest"
 
 	//client side:
-	"github.com/flynn/u2f/u2fhid"
-	"github.com/flynn/u2f/u2ftoken"
+	"github.com/cviecco/u2f/u2fhid"
+	"github.com/cviecco/u2f/u2ftoken"
 
 	//server side:
 	"github.com/tstranex/u2f"
@@ -38,6 +40,7 @@ var counter uint32
 const clientDataExample = `{"typ":"navigator.id.finishEnrollment","challenge":"vqrS6WXDe1JUs5_c3i4-LkKIHRr-3XVb3azuA5TifHo","cid_pubkey":{"kty":"EC","crv":"P-256","x":"HzQwlfXX7Q4S5MtCCnZUNBw3RMzPO9tOyWjBqRl4tJ8","y":"XVguGFLIZx1fXg3wNqfdbn75hi4-_7-BxhMljw42Ht4"},"origin":"http://example.com"}`
 
 const ClientDataRegistrationTypeValue = "navigator.id.finishEnrollment"
+const ClientDataAuthenticationTypeValue = "navigator.id.getAssertion"
 
 func registerRequest(w http.ResponseWriter, r *http.Request) {
 	c, err := u2f.NewChallenge(appID, trustedFacets)
@@ -118,7 +121,8 @@ func signResponse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var err error
-	for _, reg := range registrations {
+	for i, reg := range registrations {
+		log.Printf("in verify loop i=%d", i)
 		newCounter, authErr := reg.Authenticate(signResp, *challenge, counter)
 		if authErr == nil {
 			log.Printf("newCounter: %d", newCounter)
@@ -126,6 +130,7 @@ func signResponse(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("success"))
 			return
 		}
+		err = authErr
 	}
 
 	log.Printf("VerifySignResponse error: %v", err)
@@ -136,6 +141,8 @@ func prefilght() {
 	exampleSum1 := sha256.Sum256([]byte(clientDataExample))
 	log.Printf("exampleSum=%s\n", hex.EncodeToString(exampleSum1[:]))
 }
+
+///
 
 func main() {
 	prefilght()
@@ -281,8 +288,17 @@ func main() {
 		log.Fatal(err)
 	}
 	t = u2ftoken.NewToken(dev)
+
+	// Prepare Dta
 	//io.ReadFull(rand.Reader, challenge)
-	reqSignChallenge := sha256.Sum256([]byte(webSignRequest.Challenge))
+	tokenAuthenticationClientData := u2f.ClientData{Typ: ClientDataAuthenticationTypeValue, Challenge: webSignRequest.Challenge, Origin: webSignRequest.AppID}
+	tokenAuthenticationBuf := new(bytes.Buffer)
+	err = json.NewEncoder(tokenAuthenticationBuf).Encode(tokenAuthenticationClientData)
+	if err != nil {
+		log.Fatal(err)
+	}
+	reqSignChallenge := sha256.Sum256(tokenAuthenticationBuf.Bytes())
+	//reqSignChallenge := sha256.Sum256([]byte(webSignRequest.Challenge))
 	challenge = reqSignChallenge[:]
 	reqSingApp := sha256.Sum256([]byte(webSignRequest.AppID))
 	app = reqSingApp[:]
@@ -307,13 +323,18 @@ func main() {
 
 	//io.ReadFull(rand.Reader, challenge)
 	log.Println("authenticating, provide user presence")
+	var rawBytes []byte
 	for {
-		res, err := t.Authenticate(req)
+		rawBytes, err = t.AuthenticateRaw(req)
 		if err == u2ftoken.ErrPresenceRequired {
 			time.Sleep(200 * time.Millisecond)
 			continue
 		} else if err != nil {
 			log.Fatal(err)
+		}
+		res := &u2ftoken.AuthenticateResponse{
+			Counter:   binary.BigEndian.Uint32(rawBytes[1:]),
+			Signature: rawBytes[5:],
 		}
 		log.Printf("counter = %d, signature = %x", res.Counter, res.Signature)
 		break
@@ -331,5 +352,23 @@ func main() {
 	}
 
 	// now we do the last request
+	var signRequestResponse u2f.SignResponse
+	signRequestResponse.KeyHandle = base64.RawURLEncoding.EncodeToString(keyHandle)
+	signRequestResponse.SignatureData = base64.RawURLEncoding.EncodeToString(rawBytes)
+	signRequestResponse.ClientData = base64.RawURLEncoding.EncodeToString(tokenAuthenticationBuf.Bytes())
 
+	//
+	webSignRequestBuf := &bytes.Buffer{}
+	err = json.NewEncoder(webSignRequestBuf).Encode(signRequestResponse)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	webSignRequest2, err := http.NewRequest("POST", "/someurl", webSignRequestBuf)
+
+	rr4 := httptest.NewRecorder()
+	signResponse(rr4, webSignRequest2)
+	log.Printf("request=%s\n", rr4.Body.String()) // rr.Body is a *bytes.Buffer
+
+	log.Printf("client side signResponse Internal %+v", signRequestResponse)
 }
