@@ -6,7 +6,7 @@ import (
 	//"crypto/tls"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/binary"
+	//"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	//"fmt"
@@ -325,17 +325,14 @@ func main() {
 	log.Println("authenticating, provide user presence")
 	var rawBytes []byte
 	for {
-		rawBytes, err = t.AuthenticateRaw(req)
+		res, err := t.Authenticate(req)
 		if err == u2ftoken.ErrPresenceRequired {
 			time.Sleep(200 * time.Millisecond)
 			continue
 		} else if err != nil {
 			log.Fatal(err)
 		}
-		res := &u2ftoken.AuthenticateResponse{
-			Counter:   binary.BigEndian.Uint32(rawBytes[1:]),
-			Signature: rawBytes[5:],
-		}
+		rawBytes = res.RawResponse
 		log.Printf("counter = %d, signature = %x", res.Counter, res.Signature)
 		break
 	}
@@ -370,5 +367,4 @@ func main() {
 	signResponse(rr4, webSignRequest2)
 	log.Printf("request=%s\n", rr4.Body.String()) // rr.Body is a *bytes.Buffer
 
-	log.Printf("client side signResponse Internal %+v", signRequestResponse)
 }
