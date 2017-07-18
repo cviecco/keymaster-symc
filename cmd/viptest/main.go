@@ -47,10 +47,11 @@ func main() {
 		panic(err)
 	}
 	vipClient.VipServicesURL = *targetUrl
-	_, err = vipClient.VerifySingleToken(*tokenID, *otpValue)
+	ok, err := vipClient.VerifySingleToken(*tokenID, *otpValue)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("result=%d", ok)
 	fmt.Println("done")
 
 }
