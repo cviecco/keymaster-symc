@@ -12,6 +12,7 @@ import (
 var (
 	certFilename = flag.String("cert", "", "The filename of the certificate")
 	certKey      = flag.String("key", "", "the key for the cert")
+	targetUrl    = flag.String("targetUrl", "https://vipservices-auth.verisign.com/val/soap", "the key for the cert")
 	tokenID      = flag.String("tokenid", "", "The tokenID to test")
 	otpValue     = flag.Int("OTP", 1234, "The otp Value")
 	debug        = flag.Bool("debug", false, "Enable debug messages to console")
@@ -45,6 +46,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	vipClient.VipServicesURL = *targetUrl
 	_, err = vipClient.VerifySingleToken(*tokenID, *otpValue)
 	if err != nil {
 		panic(err)

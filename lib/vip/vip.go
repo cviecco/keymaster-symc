@@ -151,6 +151,12 @@ func (client *Client) VerifySingleToken(tokenID string, tokenValue int) (bool, e
 
 	//os.Stdout.Write(output)
 	fmt.Println(output)
-
-	return false, nil
+	// {XMLName:{Space:http://schemas.xmlsoap.org/soap/envelope/ Local:Envelope} Body:{VipValidateResponse:{RequestId:12345 Version:2.0 Status:{ReasonCode:0000 StatusMessage:Success}}}}
+	switch response.Body.VipValidateResponse.Status.ReasonCode {
+	case "0000":
+		return true, nil
+	default:
+		return false, nil
+	}
+	panic("should never have reached this point")
 }
