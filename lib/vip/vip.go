@@ -1,45 +1,23 @@
 package vip
 
 import (
+	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/xml"
 	"fmt"
-	"os"
+	"io/ioutil"
+	"log"
+	"net/http"
 	"text/template"
+	"time"
+
+	"github.com/Symantec/keymaster/lib/util"
 )
 
 // The symantec VIP endpoint is very specific on namespaces, and golang's
 // XML package is not very good with marshaling namespaces thus we will write
-// requests using the text template.
-
-// These two are actual working values for the validate api
-/*
-const exampleResponseValueText = `<?xml version="1.0" encoding="UTF-8"?>
-<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
-    <Body>
-        <ValidateResponse RequestId="CDCE1500" Version="2.0" xmlns="http://www.verisign.com/2006/08/vipservice">
-            <Status>
-                <ReasonCode>49B5</ReasonCode>
-                <StatusMessage>Failed with an invalid OTP</StatusMessage>
-            </Status>
-        </ValidateResponse>
-    </Body>
-</Envelope>`
-
-const exampleRequestValueText = `<?xml version="1.0" encoding="UTF-8" ?> <SOAP-ENV:Envelope
-        xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"
-        xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-        xmlns:ns3="http://www.w3.org/2000/09/xmldsig#"
-        xmlns:ns1="http://www.verisign.com/2006/08/vipservice">
-        <SOAP-ENV:Body>
-                <ns1:Validate Version="2.0" Id="CDCE1500"> <ns1:TokenId>AVT333666999</ns1:TokenId> <ns1:OTP>534201</ns1:OTP>
-                </ns1:Validate>
-        </SOAP-ENV:Body>
-</SOAP-ENV:Envelope>`
-*/
-//////////
+// requests using the text template. but parse them using the xml library
 type vipValidateRequest struct {
 	RequestId string `xml:"RequestId,attr"`
 	TokenId   string `xml:"TokenId"`
@@ -89,6 +67,7 @@ type validateResponseBody struct {
 type Client struct {
 	Cert           tls.Certificate
 	VipServicesURL string
+	RootCAs        *x509.CertPool
 }
 
 ///
@@ -105,21 +84,62 @@ func NewClient(certPEMBlock, keyPEMBlock []byte) (client Client, err error) {
 	return client, nil
 }
 
+func (client *Client) postBytesVipServices(data []byte) ([]byte, error) {
+	//two steps... convert data into post data!
+	req, err := util.CreateSimpleDataBodyRequest("POST", client.VipServicesURL, data, "application/xml")
+	if err != nil {
+		return nil, err
+	}
+	// make client
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{client.Cert},
+		RootCAs:      client.RootCAs,
+		MinVersion:   tls.VersionTLS12}
+
+	tlsConfig.BuildNameToCertificate()
+	transport := &http.Transport{TLSClientConfig: tlsConfig}
+	httpClient := &http.Client{Transport: transport, Timeout: 5 * time.Second}
+
+	postResponse, err := httpClient.Do(req)
+	if err != nil {
+		log.Printf("got error from req")
+		log.Println(err)
+		// TODO: differentiate between 400 and 500 errors
+		// is OK to fail.. try next
+		return nil, err
+	}
+	defer postResponse.Body.Close()
+	if postResponse.StatusCode != 200 {
+		log.Printf("got error from login call %s", postResponse.Status)
+		return nil, err
+	}
+	return ioutil.ReadAll(postResponse.Body)
+
+}
+
 // The response string is only to have some sort of testing
-func (client *Client) VerifySingleToken(tokenID string, tokenValue int, responseText string) (bool, error) {
+func (client *Client) VerifySingleToken(tokenID string, tokenValue int) (bool, error) {
 	validateRequest := vipValidateRequest{RequestId: "12345",
 		TokenId: tokenID, OTP: tokenValue}
 	tmpl, err := template.New("validate").Parse(validateRequestTemplate)
 	if err != nil {
 		panic(err)
 	}
+	var requestBuffer bytes.Buffer
 
-	err = tmpl.Execute(os.Stdout, validateRequest)
+	//err = tmpl.Execute(os.Stdout, validateRequest)
+	err = tmpl.Execute(&requestBuffer, validateRequest)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("\nbuffer='%s'\n", requestBuffer.String())
+	responseBytes, err := client.postBytesVipServices(requestBuffer.Bytes())
+	if err != nil {
+		return false, err
+	}
 	var response validateResponseBody
-	err = xml.Unmarshal([]byte(responseText), &response)
+	//err = xml.Unmarshal([]byte(responseText), &response)
+	err = xml.Unmarshal(responseBytes, &response)
 	if err != nil {
 		fmt.Print(err)
 	}
@@ -134,21 +154,3 @@ func (client *Client) VerifySingleToken(tokenID string, tokenValue int, response
 
 	return false, nil
 }
-
-/*
-func testResponse() {
-	var response validateResponseBody
-	err := xml.Unmarshal([]byte(exampleResponseValueText), &response)
-	if err != nil {
-		fmt.Print(err)
-	}
-	fmt.Printf("%+v", response)
-	output, err := xml.MarshalIndent(&response, " ", "    ")
-	if err != nil {
-		fmt.Printf("error: %v\n", err)
-	}
-
-	//os.Stdout.Write(output)
-	fmt.Println(output)
-}
-*/
