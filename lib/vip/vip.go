@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/xml"
 	"fmt"
+	"os"
 	"text/template"
 )
 
@@ -12,6 +13,7 @@ import (
 // requests using the text template.
 
 // These two are actual working values for the validate api
+/*
 const exampleResponseValueText = `<?xml version="1.0" encoding="UTF-8"?>
 <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
     <Body>
@@ -36,12 +38,19 @@ const exampleRequestValueText = `<?xml version="1.0" encoding="UTF-8" ?> <SOAP-E
                 </ns1:Validate>
         </SOAP-ENV:Body>
 </SOAP-ENV:Envelope>`
-
+*/
 //////////
 type vipValidateRequest struct {
 	RequestId string `xml:"RequestId,attr"`
-	TokenId   string
-	OTP       string
+	TokenId   string `xml:"TokenId"`
+	OTP       int    `xml:"OTP`
+}
+
+type validateRequestBody struct {
+	XMLName xml.Name `xml:"Envelope"`
+	Body    struct {
+		VipValidateRequest vipValidateRequest `xml:"Validate"`
+	}
 }
 
 const validateRequestTemplate = `<?xml version="1.0" encoding="UTF-8" ?> <SOAP-ENV:Envelope
@@ -54,7 +63,7 @@ const validateRequestTemplate = `<?xml version="1.0" encoding="UTF-8" ?> <SOAP-E
         <SOAP-ENV:Body>
                 <ns1:Validate Version="2.0" Id="{{.RequestId}}"> 
                      <ns1:TokenId>{{.TokenId}}</ns1:TokenId> 
-                     <ns1:OTP>{{.OTPValue}}</ns1:OTP>
+                     <ns1:OTP>{{.OTP}}</ns1:OTP>
                 </ns1:Validate>
         </SOAP-ENV:Body>
 </SOAP-ENV:Envelope>`
@@ -96,20 +105,37 @@ func NewClient(certPEMBlock, keyPEMBlock []byte) (client Client, err error) {
 	return client, nil
 }
 
-func (client *Client) VerifySingleToken(tokenID string, tokenValue int) (bool, error) {
-	_, err := template.New("validate").Parse(validateRequestTemplate)
+// The response string is only to have some sort of testing
+func (client *Client) VerifySingleToken(tokenID string, tokenValue int, responseText string) (bool, error) {
+	validateRequest := vipValidateRequest{RequestId: "12345",
+		TokenId: tokenID, OTP: tokenValue}
+	tmpl, err := template.New("validate").Parse(validateRequestTemplate)
 	if err != nil {
 		panic(err)
 	}
-	/*
-		err = tmpl.Execute(os.Stdout, sweaters)
-		if err != nil {
-			panic(err)
-		}
-	*/
+
+	err = tmpl.Execute(os.Stdout, validateRequest)
+	if err != nil {
+		panic(err)
+	}
+	var response validateResponseBody
+	err = xml.Unmarshal([]byte(responseText), &response)
+	if err != nil {
+		fmt.Print(err)
+	}
+	fmt.Printf("%+v", response)
+	output, err := xml.MarshalIndent(&response, " ", "    ")
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+	}
+
+	//os.Stdout.Write(output)
+	fmt.Println(output)
+
 	return false, nil
 }
 
+/*
 func testResponse() {
 	var response validateResponseBody
 	err := xml.Unmarshal([]byte(exampleResponseValueText), &response)
@@ -125,3 +151,4 @@ func testResponse() {
 	//os.Stdout.Write(output)
 	fmt.Println(output)
 }
+*/
