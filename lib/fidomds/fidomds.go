@@ -44,8 +44,8 @@ type MetadataTOCPayloadEntry struct {
 }
 
 type MetadataTOC struct {
-	nextUpdate string `json:"nextUpdate"`
-	no         int    `json:"no"`
+	NextUpdate string `json:"nextUpdate"`
+	No         int    `json:"no"`
 	//nextUpdate string                    `json:"next-update"`
 	Entries []MetadataTOCPayloadEntry `json:"entries"`
 }
