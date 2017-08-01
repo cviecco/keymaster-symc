@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"github.com/tstranex/u2f"
 	"log"
@@ -64,6 +65,10 @@ func (state *RuntimeState) u2fRegisterRequest(w http.ResponseWriter, r *http.Req
 
 const u2fRegisterRequesponsePath = "/u2f/RegisterResponse"
 
+func attestationCertIsValid(attestationCert *x509.Certificate) (bool, error) {
+	return true, nil
+}
+
 func (state *RuntimeState) u2fRegisterResponse(w http.ResponseWriter, r *http.Request) {
 	if state.sendFailureToClientIfLocked(w, r) {
 		return
@@ -105,6 +110,16 @@ func (state *RuntimeState) u2fRegisterResponse(w http.ResponseWriter, r *http.Re
 		log.Printf("u2f.Register error: %v", err)
 		http.Error(w, "error verifying response", http.StatusInternalServerError)
 		return
+	}
+	valdCert, err := attestationCertIsValid(reg.AttestationCert)
+	if err != nil {
+		log.Printf("u2f.Register error: %v", err)
+		http.Error(w, "error verifying response", http.StatusInternalServerError)
+		return
+	}
+	if !validCert {
+		log.Printf("invalid cert found")
+		http.Error(w, "certificate is not valid", http.StatusBadRequest)
 	}
 
 	newReg := u2fAuthData{Counter: 0,
