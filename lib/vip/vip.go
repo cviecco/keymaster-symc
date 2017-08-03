@@ -64,10 +64,57 @@ type validateResponseBody struct {
 	}
 }
 
+const userInfoRequestTemplate = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:vip="https://schemas.symantec.com/vip/2011/04/vipuserservices">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <vip:GetUserInfoRequest>
+         <vip:requestId>{{.RequestId}}</vip:requestId>
+         <vip:userId>{{.Username}}</vip:userId>
+         <!--Optional:-->
+         <vip:iaInfo>false</vip:iaInfo>
+         <!--Optional:-->
+         <vip:includePushAttributes>true</vip:includePushAttributes>
+      </vip:GetUserInfoRequest>
+   </soapenv:Body>
+</soapenv:Envelope>`
+
+const exampleUserInfoResponse = `<?xml version="1.0"?>
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+  <S:Body>
+    <GetUserInfoResponse xmlns="https://schemas.symantec.com/vip/2011/04/vipuserservices">
+      <requestId>258aaa0361ea</requestId>
+      <status>0000</status>
+      <statusMessage>Success</statusMessage>
+      <userId>camilo_viecco1</userId>
+      <userCreationTime>2016-05-25T18:40:29.747Z</userCreationTime>
+      <userStatus>ACTIVE</userStatus>
+      <numBindings>1</numBindings>
+      <credentialBindingDetail>
+        <credentialId>AVT807113441</credentialId>
+        <credentialType>STANDARD_OTP</credentialType>
+        <credentialStatus>ENABLED</credentialStatus>
+        <bindingDetail>
+          <bindStatus>ENABLED</bindStatus>
+          <friendlyName>symentec-hw1</friendlyName>
+          <lastBindTime>2016-06-03T19:58:32.373Z</lastBindTime>
+          <lastAuthnTime>2017-08-03T21:58:22.090Z</lastAuthnTime>
+          <lastAuthnId>484374FC7EB7AA12</lastAuthnId>
+        </bindingDetail>
+      </credentialBindingDetail>
+    </GetUserInfoResponse>
+  </S:Body>
+</S:Envelope>`
+
+/*
+type userInfoBindingDetail {
+}
+*/
+
 type Client struct {
 	Cert           tls.Certificate
 	VipServicesURL string
-	RootCAs        *x509.CertPool
+
+	RootCAs *x509.CertPool
 }
 
 ///
