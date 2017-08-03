@@ -57,7 +57,11 @@ type AppConfigFile struct {
 
 var (
 	Version        = "No version provided"
-	configFilename = flag.String("config", "config.yml", "The filename of the configuration")
+	configFilename = flag.String("config", filepath.Join(os.Getenv("HOME"), ".keymaster", "prodme_config.yml"), "The filename of the configuration")
+	rootCAFilename = flag.String("rootCAFilename", "", "(optional) name for using non OS root CA to verify TLS connections")
+	configHost     = flag.String("configHost", "", "Get a bootstrap config from this host")
+	cliUsername    = flag.String("username", "", "username for keymaster")
+	checkDevices   = flag.Bool("checkDevices", false, "CheckU2F devices in your system")
 	debug          = flag.Bool("debug", false, "Enable debug messages to console")
 )
 
@@ -173,6 +177,32 @@ func doCertRequest(client *http.Client, authCookies []*http.Cookie, url, filedat
 		return nil, err
 	}
 	return ioutil.ReadAll(resp.Body)
+
+}
+
+func checkU2FDevices() {
+	// TODO: move this to initialization code, ans pass the device list to this function?
+	// or maybe pass the token?...
+	devices, err := u2fhid.Devices()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(devices) == 0 {
+		log.Fatal("no U2F tokens found")
+	}
+
+	// TODO: transform this into an iteration over all found devices
+	for _, d := range devices {
+		//d := devices[0]
+		log.Printf("manufacturer = %q, product = %q, vid = 0x%04x, pid = 0x%04x", d.Manufacturer, d.Product, d.ProductID, d.VendorID)
+
+		dev, err := u2fhid.Open(d)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer dev.Close()
+	}
+	//t := u2ftoken.NewToken(dev)
 
 }
 
@@ -341,9 +371,7 @@ func getParseURLEnvVariable(name string) (*url.URL, error) {
 	return envUrl, nil
 }
 
-func getCertsFromServer(signer crypto.Signer, userName string, password []byte, baseUrl string, tlsConfig *tls.Config, skipu2f bool) (sshCert []byte, x509Cert []byte, err error) {
-	//First Do Login
-
+func getHttpClient(tlsConfig *tls.Config) (*http.Client, error) {
 	clientTransport := &http.Transport{
 		TLSClientConfig: tlsConfig,
 	}
@@ -360,6 +388,15 @@ func getCertsFromServer(signer crypto.Signer, userName string, password []byte, 
 
 	// TODO: change timeout const for a flag
 	client := &http.Client{Transport: clientTransport, Timeout: 5 * time.Second}
+	return client, nil
+}
+
+func getCertsFromServer(signer crypto.Signer, userName string, password []byte, baseUrl string, tlsConfig *tls.Config, skipu2f bool) (sshCert []byte, x509Cert []byte, err error) {
+	//First Do Login
+	client, err := getHttpClient(tlsConfig)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	loginUrl := baseUrl + proto.LoginPath
 	form := url.Values{}
@@ -483,6 +520,39 @@ func getUserInfoAndCreds() (usr *user.User, password []byte, err error) {
 	return usr, password, nil
 }
 
+const hostConfigPath = "/public/clientConfig"
+
+func getConfigFromHost(configFilename string, hostname string, rootCAs *x509.CertPool) error {
+	tlsConfig := &tls.Config{RootCAs: rootCAs, MinVersion: tls.VersionTLS12}
+	client, err := getHttpClient(tlsConfig)
+	if err != nil {
+		return err
+	}
+	configUrl := "https://" + hostname + hostConfigPath
+	/*
+		req, err := http.NewRequest("GET", configUrl, nil)
+		if err != nil {
+			return err
+		}
+	*/
+	resp, err := client.Get(configUrl)
+	if err != nil {
+		log.Printf("got error from req")
+		log.Println(err)
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		log.Printf("got error from getconfig call %s", resp)
+		return err
+	}
+	configData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(configFilename, configData, 0644)
+}
+
 func Usage() {
 	fmt.Fprintf(os.Stderr, "Usage of %s (version %s):\n", os.Args[0], Version)
 	flag.PrintDefaults()
@@ -492,17 +562,59 @@ func main() {
 	flag.Usage = Usage
 	flag.Parse()
 
+	if *checkDevices {
+		checkU2FDevices()
+		return
+	}
+
+	var rootCAs *x509.CertPool
+	if len(*rootCAFilename) > 1 {
+		caData, err := ioutil.ReadFile(*rootCAFilename)
+		if err != nil {
+			log.Printf("Failed to read caFilename")
+			log.Fatal(err)
+		}
+		rootCAs = x509.NewCertPool()
+		if !rootCAs.AppendCertsFromPEM(caData) {
+			log.Fatal("cannot append file data")
+		}
+
+	}
+
+	usr, err := user.Current()
+	if err != nil {
+		log.Printf("cannot get current user info")
+		log.Fatal(err)
+	}
+	userName := usr.Username
+	if *cliUsername != "" {
+		userName = *cliUsername
+	}
+
+	homeDir, err := getUserHomeDir(usr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	configPath, _ := filepath.Split(*configFilename)
+
+	err = os.MkdirAll(configPath, 0755)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if len(*configHost) > 1 {
+		err = getConfigFromHost(*configFilename, *configHost, rootCAs)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	config, err := loadVerifyConfigFile(*configFilename)
 	if err != nil {
 		panic(err)
 	}
-	usr, password, err := getUserInfoAndCreds()
-	if err != nil {
-		log.Fatal(err)
-	}
-	userName := usr.Username
-
-	homeDir, err := getUserHomeDir(usr)
+	_, password, err := getUserInfoAndCreds()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -515,7 +627,7 @@ func main() {
 		log.Fatal(err)
 	}
 	sshCert, x509Cert, err := getCertFromTargetUrls(signer, userName,
-		password, strings.Split(config.Base.Gen_Cert_URLS, ","), nil, false)
+		password, strings.Split(config.Base.Gen_Cert_URLS, ","), rootCAs, false)
 	if err != nil {
 		log.Fatal(err)
 	}

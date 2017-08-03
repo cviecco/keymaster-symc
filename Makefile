@@ -2,17 +2,14 @@
 BINARY=keymaster
 
 # These are the values we want to pass for Version and BuildTime
-VERSION=0.2.2
+VERSION=0.3.2
 #BUILD_TIME=`date +%FT%T%z`
 
 # Setup the -ldflags option for go build here, interpolate the variable values
 #LDFLAGS=-ldflags "-X github.com/ariejan/roll/core.Version=${VERSION} -X github.com/ariejan/roll/core.BuildTime=${BUILD_TIME}"
 
 all:
-	go test -v ./...
-	mkdir -p bin/
-	cd cmd/getcreds; go build  -o ../../bin/getcreds  -ldflags "-X main.Version=${VERSION}"
-	cd cmd/ssh_usercert_gen; go build  -o ../../bin/keymaster -ldflags "-X main.Version=${VERSION}"
+	cd $(GOPATH)/src; go install -ldflags "-X main.Version=${VERSION}" github.com/Symantec/keymaster/cmd/*
 
 get-deps:
 	go get -t ./...
@@ -30,7 +27,10 @@ ${BINARY}-${VERSION}.tar.gz:
 	tar -cvzf ${BINARY}-${VERSION}.tar.gz ${BINARY}-${VERSION}/
 	rm -rf ${BINARY}-${VERSION}/
 
-tar:	${BINARY}-${VERSION}.tar.gz
-
 rpm:	${BINARY}-${VERSION}.tar.gz
 	rpmbuild -ta ${BINARY}-${VERSION}.tar.gz
+
+tar:	${BINARY}-${VERSION}.tar.gz
+
+test:
+	go test -v ./...

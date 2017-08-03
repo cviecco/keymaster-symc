@@ -13,10 +13,10 @@ import (
 	"github.com/howeyc/gopass"
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/armor"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/oauth2"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"log"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -26,6 +26,7 @@ import (
 
 type baseConfig struct {
 	HttpAddress     string `yaml:"http_address"`
+	AdminAddress    string `yaml:"admin_address"`
 	TLSCertFilename string `yaml:"tls_cert_filename"`
 	TLSKeyFilename  string `yaml:"tls_key_filename"`
 	//RequiredAuthForCert         string   `yaml:"required_auth_for_cert"`
@@ -91,6 +92,7 @@ func loadVerifyConfigFile(configFilename string) (RuntimeState, error) {
 	runtimeState.authCookie = make(map[string]authInfo)
 	//runtimeState.userProfile = make(map[string]userProfile)
 	runtimeState.pendingOauth2 = make(map[string]pendingAuth2Request)
+	runtimeState.SignerIsReady = make(chan bool, 1)
 
 	//verify config
 	if len(runtimeState.Config.Base.HostIdentity) > 0 {
@@ -102,7 +104,10 @@ func loadVerifyConfigFile(configFilename string) (RuntimeState, error) {
 		}
 	}
 	// TODO: This assumes httpAddress is just the port..
-	u2fAppID = "https://" + runtimeState.HostIdentity + runtimeState.Config.Base.HttpAddress
+	u2fAppID = "https://" + runtimeState.HostIdentity
+	if runtimeState.Config.Base.HttpAddress != ":443" {
+		u2fAppID = u2fAppID + runtimeState.Config.Base.HttpAddress
+	}
 	u2fTrustedFacets = append(u2fTrustedFacets, u2fAppID)
 
 	if len(runtimeState.Config.Base.KerberosRealm) > 0 {
@@ -121,14 +126,14 @@ func loadVerifyConfigFile(configFilename string) (RuntimeState, error) {
 	sshCAFilename := runtimeState.Config.Base.SSHCAFilename
 	runtimeState.SSHCARawFileContent, err = exitsAndCanRead(sshCAFilename, "ssh CA File")
 	if err != nil {
-		log.Printf("Cannot load ssh CA File")
+		logger.Printf("Cannot load ssh CA File")
 		return runtimeState, err
 	}
 
 	if len(runtimeState.Config.Base.ClientCAFilename) > 0 {
 		clientCAbuffer, err := exitsAndCanRead(runtimeState.Config.Base.ClientCAFilename, "client CA file")
 		if err != nil {
-			log.Printf("Cannot load client CA File")
+			logger.Printf("Cannot load client CA File")
 			return runtimeState, err
 		}
 		runtimeState.ClientCAPool = x509.NewCertPool()
@@ -138,25 +143,26 @@ func loadVerifyConfigFile(configFilename string) (RuntimeState, error) {
 			return runtimeState, err
 		}
 		if *debug || true {
-			log.Printf("client ca file loaded")
+			logger.Printf("client ca file loaded")
 		}
 
 	}
 	if strings.HasPrefix(string(runtimeState.SSHCARawFileContent[:]), "-----BEGIN RSA PRIVATE KEY-----") {
 		signer, err := getSignerFromPEMBytes(runtimeState.SSHCARawFileContent)
 		if err != nil {
-			log.Printf("Cannot parse Priave Key file")
+			logger.Printf("Cannot parse Priave Key file")
 			return runtimeState, err
 		}
 		runtimeState.caCertDer, err = generateCADer(&runtimeState, signer)
 		if err != nil {
-			log.Printf("Cannot generate CA Der")
+			logger.Printf("Cannot generate CA Der")
 			return runtimeState, err
 		}
 
 		// Assignmet of signer MUST be the last operation after
 		// all error checks
 		runtimeState.Signer = signer
+		runtimeState.SignerIsReady <- true
 
 	} else {
 		if runtimeState.ClientCAPool == nil {
@@ -174,7 +180,7 @@ func loadVerifyConfigFile(configFilename string) (RuntimeState, error) {
 
 	//create the oath2 config
 	if runtimeState.Config.Oauth2.Enabled == true {
-		log.Printf("oath2 is enabled")
+		logger.Printf("oath2 is enabled")
 		runtimeState.Config.Oauth2.Config = &oauth2.Config{
 			ClientID:     runtimeState.Config.Oauth2.ClientID,
 			ClientSecret: runtimeState.Config.Oauth2.ClientSecret,
@@ -199,6 +205,16 @@ func loadVerifyConfigFile(configFilename string) (RuntimeState, error) {
 
 func generateArmoredEncryptedCAPritaveKey(passphrase []byte, filepath string) error {
 	privateKey, err := rsa.GenerateKey(rand.Reader, defaultRSAKeySize)
+	if err != nil {
+		return err
+	}
+
+	sshPublicKey, err := ssh.NewPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return err
+	}
+	publicKeyBytes := ssh.MarshalAuthorizedKey(sshPublicKey)
+	err = ioutil.WriteFile(filepath+".pub", publicKeyBytes, 0644)
 	if err != nil {
 		return err
 	}
@@ -282,16 +298,16 @@ func generateRSAKeyAndSaveInFile(filename string, bits int) (*rsa.PrivateKey, er
 func generateCertAndWriteToFile(filename string, template, parent *x509.Certificate, pub, priv interface{}) ([]byte, error) {
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, parent, pub, priv)
 	if err != nil {
-		log.Fatalf("Failed to create certificate: %s", err)
+		logger.Fatalf("Failed to create certificate: %s", err)
 	}
 	certOut, err := os.Create(filename)
 	if err != nil {
-		log.Fatalf("failed to open cert.pem for writing: %s", err)
+		logger.Fatalf("failed to open cert.pem for writing: %s", err)
 	}
 	defer certOut.Close()
 	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 
-	log.Print("written cert.pem\n")
+	logger.Print("written cert.pem\n")
 	return derBytes, nil
 }
 
@@ -309,7 +325,7 @@ func generateCerts(configDir string, config *baseConfig, rsaKeySize int) error {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		log.Fatalf("failed to generate serial number: %s", err)
+		logger.Fatalf("failed to generate serial number: %s", err)
 	}
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
@@ -326,7 +342,7 @@ func generateCerts(configDir string, config *baseConfig, rsaKeySize int) error {
 	serverCertFilename := configDir + "/server.pem"
 	_, err = generateCertAndWriteToFile(serverCertFilename, &template, &template, &serverKey.PublicKey, serverKey)
 	if err != nil {
-		log.Fatalf("Failed to create certificate: %s", err)
+		logger.Fatalf("Failed to create certificate: %s", err)
 	}
 
 	//now the admin CA
@@ -339,7 +355,7 @@ func generateCerts(configDir string, config *baseConfig, rsaKeySize int) error {
 	caTemplate := template
 	serialNumber, err = rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		log.Fatalf("failed to generate serial number: %s", err)
+		logger.Fatalf("failed to generate serial number: %s", err)
 	}
 	caTemplate.DNSNames = nil
 	caTemplate.SerialNumber = serialNumber
@@ -350,12 +366,12 @@ func generateCerts(configDir string, config *baseConfig, rsaKeySize int) error {
 	adminCACertFilename := configDir + "/adminCA.pem"
 	caDer, err := generateCertAndWriteToFile(adminCACertFilename, &caTemplate, &caTemplate, &adminCAKey.PublicKey, adminCAKey)
 	if err != nil {
-		log.Fatalf("Failed to create certificate: %s", err)
+		logger.Fatalf("Failed to create certificate: %s", err)
 	}
 	// Now the admin client
 	caCert, err := x509.ParseCertificate(caDer)
 	if err != nil {
-		log.Fatalf("Failed to parse certificate: %s", err)
+		logger.Fatalf("Failed to parse certificate: %s", err)
 	}
 	clientKeyFilename := configDir + "/adminClient.key"
 	clientKey, err := generateRSAKeyAndSaveInFile(clientKeyFilename, rsaKeySize)
@@ -366,7 +382,7 @@ func generateCerts(configDir string, config *baseConfig, rsaKeySize int) error {
 	clientCertFilename := configDir + "/adminClient.pem"
 	_, err = generateCertAndWriteToFile(clientCertFilename, &clientTemplate, caCert, &clientKey.PublicKey, adminCAKey)
 	if err != nil {
-		log.Fatalf("Failed to create certificate: %s", err)
+		logger.Fatalf("Failed to create certificate: %s", err)
 	}
 
 	config.TLSKeyFilename = serverKeyFilename
@@ -378,11 +394,16 @@ func generateCerts(configDir string, config *baseConfig, rsaKeySize int) error {
 func generateNewConfig(configFilename string) error {
 	reader := bufio.NewReader(os.Stdin)
 	const rsaKeySize = 3072
-	return generateNewConfigInternal(reader, configFilename, rsaKeySize)
+	passphrase, err := getPassphrase()
+	if err != nil {
+		logger.Printf("error getting passphrase")
+		return err
+	}
+	return generateNewConfigInternal(reader, configFilename, rsaKeySize, passphrase)
 }
 
 // Generates a simple base config via an interview like process
-func generateNewConfigInternal(reader *bufio.Reader, configFilename string, rsaKeySize int) error {
+func generateNewConfigInternal(reader *bufio.Reader, configFilename string, rsaKeySize int, passphrase []byte) error {
 	var config AppConfigFile
 	//Get base dir
 	baseDir, err := getUserString(reader, "Default base Dir", "/tmp")
@@ -392,7 +413,7 @@ func generateNewConfigInternal(reader *bufio.Reader, configFilename string, rsaK
 	baseDir = strings.Trim(baseDir, "\r\n")
 	//make dest tartget
 	configDir := filepath.Join(baseDir, "/etc/keymaster")
-	log.Printf("configdir = '%s'", configDir)
+	logger.Printf("configdir = '%s'", configDir)
 	err = os.MkdirAll(configDir, os.ModeDir|0755)
 	if err != nil {
 		return err
@@ -403,12 +424,17 @@ func generateNewConfigInternal(reader *bufio.Reader, configFilename string, rsaK
 	if err != nil {
 		return err
 	}
+	err = os.MkdirAll(config.Base.DataDirectory, os.ModeDir|0755)
+	if err != nil {
+		return err
+	}
 	// TODO: Add check that directory exists.
-	defaultHttpAddress := ":33443"
+	defaultHttpAddress := ":443"
 	config.Base.HttpAddress, err = getUserString(reader, "HttpAddress", defaultHttpAddress)
 	// Todo check if valid
+	defaultAdminAddress := ":6920"
+	config.Base.AdminAddress, err = getUserString(reader, "AdminAddress", defaultAdminAddress)
 
-	passphrase := []byte("passphrase")
 	config.Base.SSHCAFilename = filepath.Join(configDir, "masterKey.asc")
 	err = generateArmoredEncryptedCAPritaveKey(passphrase, config.Base.SSHCAFilename)
 	if err != nil {
@@ -430,7 +456,7 @@ func generateNewConfigInternal(reader *bufio.Reader, configFilename string, rsaK
 	}
 	config.Base.HtpasswdFilename = httpPassFilename
 
-	//log.Printf("%+v", config)
+	//logger.Printf("%+v", config)
 	configText, err := yaml.Marshal(&config)
 	if err != nil {
 		return err
