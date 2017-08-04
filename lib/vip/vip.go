@@ -64,12 +64,17 @@ type validateResponseBody struct {
 	}
 }
 
+type vipUserInfoRequest struct {
+	RequestId string `xml:"requestId`
+	UserId    string `xml:"userId"`
+}
+
 const userInfoRequestTemplate = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:vip="https://schemas.symantec.com/vip/2011/04/vipuserservices">
    <soapenv:Header/>
    <soapenv:Body>
       <vip:GetUserInfoRequest>
          <vip:requestId>{{.RequestId}}</vip:requestId>
-         <vip:userId>{{.Username}}</vip:userId>
+         <vip:userId>{{.UserId}}</vip:userId>
          <!--Optional:-->
          <vip:iaInfo>false</vip:iaInfo>
          <!--Optional:-->
@@ -111,10 +116,10 @@ type userInfoBindingDetail {
 */
 
 type Client struct {
-	Cert           tls.Certificate
-	VipServicesURL string
-
-	RootCAs *x509.CertPool
+	Cert               tls.Certificate
+	VipServicesURL     string
+	VipUserServicesURL string
+	RootCAs            *x509.CertPool
 }
 
 ///
@@ -127,13 +132,13 @@ func NewClient(certPEMBlock, keyPEMBlock []byte) (client Client, err error) {
 	}
 	//This is the production url for vipservices
 	client.VipServicesURL = "https://vipservices-auth.verisign.com/val/soap"
-
+	client.VipUserServicesURL = "https://userservices-auth.vip.symantec.com/vipuserservices/QueryService_1_7"
 	return client, nil
 }
 
-func (client *Client) postBytesVipServices(data []byte) ([]byte, error) {
+func (client *Client) postBytesVip(data []byte, targetURL string, contentType string) ([]byte, error) {
 	//two steps... convert data into post data!
-	req, err := util.CreateSimpleDataBodyRequest("POST", client.VipServicesURL, data, "application/xml")
+	req, err := util.CreateSimpleDataBodyRequest("POST", targetURL, data, contentType)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +166,14 @@ func (client *Client) postBytesVipServices(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	return ioutil.ReadAll(postResponse.Body)
+}
 
+func (client *Client) postBytesVipServices(data []byte) ([]byte, error) {
+	return client.postBytesVip(data, client.VipServicesURL, "application/xml")
+}
+
+func (client *Client) postBytesUserServices(data []byte) ([]byte, error) {
+	return client.postBytesVip(data, client.VipUserServicesURL, "text/xml")
 }
 
 // The response string is only to have some sort of testing
