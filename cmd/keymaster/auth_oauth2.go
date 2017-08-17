@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const maxAgeSecondsRedirCookie = 60
+const maxAgeSecondsRedirCookie = 120
 const redirCookieName = "oauth2_redir"
 
 const oauth2LoginBeginPath = "/auth/oauth2/login"
@@ -156,6 +156,7 @@ func (state *RuntimeState) oauth2RedirectPathHandler(w http.ResponseWriter, r *h
 		return
 	}
 
+	// The Name field could also be useful
 	//logger.Printf("%+v", data)
 
 	// Check if name is there..
@@ -174,7 +175,7 @@ func (state *RuntimeState) oauth2RedirectPathHandler(w http.ResponseWriter, r *h
 		http.Error(w, "Email from userinfo is invalid: ", http.StatusInternalServerError)
 		return
 	}
-	username := components[0]
+	username := strings.ToLower(components[0])
 
 	// TODO: we should enhance oath2 to limit who can login by either full username OR
 	// source domain.
