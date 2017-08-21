@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"github.com/Symantec/keymaster/lib/vip"
 	"io/ioutil"
+	"log"
 	"os"
+	"os/user"
 )
 
 const ExampleUserInfoResponse = `<?xml version="1.0"?>
@@ -33,6 +35,18 @@ const ExampleUserInfoResponse = `<?xml version="1.0"?>
           <lastAuthnId>484374FC7EB7AA12</lastAuthnId>
         </bindingDetail>
       </credentialBindingDetail>
+      <credentialBindingDetail>
+        <credentialId>AVTYYYYYYY</credentialId>
+        <credentialType>STANDARD_OTP</credentialType>
+        <credentialStatus>ENABLED</credentialStatus>
+        <bindingDetail>
+          <bindStatus>ENABLED</bindStatus>
+          <friendlyName>symentec-hw2</friendlyName>
+          <lastBindTime>2016-06-03T19:58:32.373Z</lastBindTime>
+          <lastAuthnTime>2017-08-03T21:58:22.090Z</lastAuthnTime>
+          <lastAuthnId>484374FC7EB7AA12</lastAuthnId>
+        </bindingDetail>
+      </credentialBindingDetail> 
     </GetUserInfoResponse>
   </S:Body>
 </S:Envelope>`
@@ -104,6 +118,13 @@ func main() {
 	flag.Parse()
 	parseUserInfoResponse()
 
+	usr, err := user.Current()
+	if err != nil {
+		log.Printf("cannot get current user info")
+		log.Fatal(err)
+	}
+	userName := usr.Username
+
 	fmt.Println("vim-go")
 	certPem, err := exitsAndCanRead(*certFilename, "certificate file")
 	if err != nil {
@@ -118,6 +139,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	_, err = vipClient.GetActiveTokens(userName)
+	if err != nil {
+		panic(err)
+	}
+
 	vipClient.VipServicesURL = *targetUrl
 	ok, err := vipClient.VerifySingleToken(*tokenID, *otpValue)
 	if err != nil {

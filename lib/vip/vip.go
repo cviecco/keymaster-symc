@@ -110,6 +110,38 @@ const exampleUserInfoResponse = `<?xml version="1.0"?>
   </S:Body>
 </S:Envelope>`
 
+type vipResponseBindingDetail struct {
+	ReasonCode    string `xml:"bindStatus,omitempty"`
+	FriendlyName  string `xml:"friendlyName,omitempty"`
+	LastBindTime  string `xml:"lastBindTime,omitempty"`
+	LastAuthnTime string `xml:"lastAuthnTime,omitempty"`
+	LastAuthnId   string `xml:"lastAuthnId,omitempty"`
+}
+type vipResponseCredentialBindingDetail struct {
+	CredentialId     string                   `xml:"credentialId,omitempty"`
+	CredentialType   string                   `xml:"credentialType,omitempty"`
+	CredentialStatus string                   `xml:"credentialStatus,omitempty"`
+	BindingDetail    vipResponseBindingDetail `xml:"bindingDetail"`
+}
+
+type vipResponseGetUserInfo struct {
+	RequestId               string                               `xml:"requestId"`
+	Status                  string                               `xml:"status"`
+	StatusMessage           string                               `xml:"statusMessage"`
+	UserId                  string                               `xml:"userId"`
+	UserCreationTime        string                               `xml:"userCreationTime"`
+	UserStatus              string                               `xml:"userStatus"`
+	NumBindings             string                               `xml:"numBindings"`
+	CredentialBindingDetail []vipResponseCredentialBindingDetail `xml:"credentialBindingDetail"`
+}
+
+type userInfoResponseBody struct {
+	XMLName xml.Name `xml:"Envelope"`
+	Body    struct {
+		VipResponseGetUserInfo vipResponseGetUserInfo `xml:"GetUserInfoResponse"`
+	}
+}
+
 /*
 type userInfoBindingDetail {
 }
@@ -218,4 +250,46 @@ func (client *Client) VerifySingleToken(tokenID string, tokenValue int) (bool, e
 		return false, nil
 	}
 	panic("should never have reached this point")
+}
+
+func (client *Client) GetActiveTokens(userID string) ([]string, error) {
+	userInfoRequest := vipUserInfoRequest{RequestId: "12345",
+		UserId: userID}
+	/*
+		vipValidateRequest{RequestId: "12345",
+			TokenId: tokenID, OTP: tokenValue}
+	*/
+	tmpl, err := template.New("userInfo").Parse(userInfoRequestTemplate)
+	if err != nil {
+		panic(err)
+	}
+	var requestBuffer bytes.Buffer
+
+	//err = tmpl.Execute(os.Stdout, validateRequest)
+	err = tmpl.Execute(&requestBuffer, userInfoRequest)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("\nbuffer='%s'\n", requestBuffer.String())
+	responseBytes, err := client.postBytesUserServices(requestBuffer.Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+	var response userInfoResponseBody
+	//err = xml.Unmarshal([]byte(responseText), &response)
+	err = xml.Unmarshal(responseBytes, &response)
+	if err != nil {
+		fmt.Print(err)
+	}
+	fmt.Printf("%+v", response)
+	output, err := xml.MarshalIndent(&response, " ", "    ")
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+	}
+
+	//os.Stdout.Write(output)
+	fmt.Println(output)
+
+	return nil, nil
 }
