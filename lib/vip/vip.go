@@ -7,14 +7,13 @@ import (
 	"crypto/x509"
 	"encoding/xml"
 	"fmt"
+	"github.com/Symantec/keymaster/lib/util"
 	"io/ioutil"
 	"log"
 	"math/big"
 	"net/http"
 	"text/template"
 	"time"
-
-	"github.com/Symantec/keymaster/lib/util"
 )
 
 // The symantec VIP endpoint is very specific on namespaces, and golang's
