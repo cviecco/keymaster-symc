@@ -287,9 +287,17 @@ func (client *Client) GetActiveTokens(userID string) ([]string, error) {
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 	}
+	var enabledTokenID []string
+	for _, credentialBinding := range response.Body.VipResponseGetUserInfo.CredentialBindingDetail {
+		fmt.Printf("\n%+v\n", credentialBinding)
+		if credentialBinding.CredentialStatus != "ENABLED" {
+			continue
+		}
+		enabledTokenID = append(enabledTokenID, credentialBinding.CredentialId)
+	}
 
 	//os.Stdout.Write(output)
 	fmt.Println(output)
 
-	return nil, nil
+	return enabledTokenID, nil
 }
