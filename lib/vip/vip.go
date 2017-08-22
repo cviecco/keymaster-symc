@@ -2,12 +2,14 @@ package vip
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"net/http"
 	"text/template"
 	"time"
@@ -142,19 +144,12 @@ type userInfoResponseBody struct {
 	}
 }
 
-/*
-type userInfoBindingDetail {
-}
-*/
-
 type Client struct {
 	Cert               tls.Certificate
 	VipServicesURL     string
 	VipUserServicesURL string
 	RootCAs            *x509.CertPool
 }
-
-///
 
 func NewClient(certPEMBlock, keyPEMBlock []byte) (client Client, err error) {
 
@@ -208,9 +203,18 @@ func (client *Client) postBytesUserServices(data []byte) ([]byte, error) {
 	return client.postBytesVip(data, client.VipUserServicesURL, "text/xml")
 }
 
+func genNewRequestID() string {
+	nBig, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		panic(err)
+	}
+	return nBig.String()
+}
+
 // The response string is only to have some sort of testing
 func (client *Client) VerifySingleToken(tokenID string, tokenValue int) (bool, error) {
-	validateRequest := vipValidateRequest{RequestId: "12345",
+	requestID := genNewRequestID()
+	validateRequest := vipValidateRequest{RequestId: requestID,
 		TokenId: tokenID, OTP: tokenValue}
 	tmpl, err := template.New("validate").Parse(validateRequestTemplate)
 	if err != nil {
@@ -223,7 +227,7 @@ func (client *Client) VerifySingleToken(tokenID string, tokenValue int) (bool, e
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("\nbuffer='%s'\n", requestBuffer.String())
+	//fmt.Printf("\nbuffer='%s'\n", requestBuffer.String())
 	responseBytes, err := client.postBytesVipServices(requestBuffer.Bytes())
 	if err != nil {
 		return false, err
@@ -234,14 +238,15 @@ func (client *Client) VerifySingleToken(tokenID string, tokenValue int) (bool, e
 	if err != nil {
 		fmt.Print(err)
 	}
-	fmt.Printf("%+v", response)
-	output, err := xml.MarshalIndent(&response, " ", "    ")
-	if err != nil {
-		fmt.Printf("error: %v\n", err)
-	}
+	//fmt.Printf("%+v", response)
+	/*
+		output, err := xml.MarshalIndent(&response, " ", "    ")
+		if err != nil {
+			fmt.Printf("error: %v\n", err)
+		}
 
-	//os.Stdout.Write(output)
-	fmt.Println(output)
+		fmt.Println(output)
+	*/
 	// {XMLName:{Space:http://schemas.xmlsoap.org/soap/envelope/ Local:Envelope} Body:{VipValidateResponse:{RequestId:12345 Version:2.0 Status:{ReasonCode:0000 StatusMessage:Success}}}}
 	switch response.Body.VipValidateResponse.Status.ReasonCode {
 	case "0000":
@@ -253,7 +258,8 @@ func (client *Client) VerifySingleToken(tokenID string, tokenValue int) (bool, e
 }
 
 func (client *Client) GetActiveTokens(userID string) ([]string, error) {
-	userInfoRequest := vipUserInfoRequest{RequestId: "12345",
+	requestID := genNewRequestID()
+	userInfoRequest := vipUserInfoRequest{RequestId: requestID,
 		UserId: userID}
 	/*
 		vipValidateRequest{RequestId: "12345",
@@ -270,38 +276,55 @@ func (client *Client) GetActiveTokens(userID string) ([]string, error) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("\nbuffer='%s'\n", requestBuffer.String())
+	//fmt.Printf("\nbuffer='%s'\n", requestBuffer.String())
 	responseBytes, err := client.postBytesUserServices(requestBuffer.Bytes())
 	if err != nil {
 		return nil, err
 	}
 
 	var response userInfoResponseBody
-	//err = xml.Unmarshal([]byte(responseText), &response)
 	err = xml.Unmarshal(responseBytes, &response)
 	if err != nil {
 		fmt.Print(err)
 	}
-	fmt.Printf("%+v", response)
-	output, err := xml.MarshalIndent(&response, " ", "    ")
-	if err != nil {
-		fmt.Printf("error: %v\n", err)
-	}
+	// TODO verify response requestID matches ours
+	//fmt.Printf("%+v", response)
+	/*
+		output, err := xml.MarshalIndent(&response, " ", "    ")
+		if err != nil {
+			fmt.Printf("error: %v\n", err)
+		}
+		fmt.Println(output)
+	*/
 	var enabledTokenID []string
 	for _, credentialBinding := range response.Body.VipResponseGetUserInfo.CredentialBindingDetail {
-		fmt.Printf("\n%+v\n", credentialBinding)
+		//fmt.Printf("\n%+v\n", credentialBinding)
 		if credentialBinding.CredentialStatus != "ENABLED" {
 			continue
 		}
 		enabledTokenID = append(enabledTokenID, credentialBinding.CredentialId)
 	}
 
-	//os.Stdout.Write(output)
-	fmt.Println(output)
 	return enabledTokenID, nil
 }
 
-/*
-func client *Client) GetActiveTokens(userID string, OTPValue int) {
+func (client *Client) ValidateUserOTP(userID string, OTPValue int) (bool, error) {
+	tokenList, err := client.GetActiveTokens(userID)
+	if err != nil {
+		return false, err
+	}
+	if len(tokenList) < 1 {
+		return false, nil
+	}
+	// TODO: replace this loop for a single call in the API
+	for _, tokenId := range tokenList {
+		ok, err := client.VerifySingleToken(tokenId, OTPValue)
+		if err != nil {
+			continue
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
 }
-*/

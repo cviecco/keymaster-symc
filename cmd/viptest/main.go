@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/xml"
+	//"encoding/xml"
 	"errors"
 	"flag"
 	"fmt"
@@ -60,48 +60,6 @@ var (
 	debug        = flag.Bool("debug", false, "Enable debug messages to console")
 )
 
-type vipResponseBindingDetail struct {
-	ReasonCode    string `xml:"bindStatus,omitempty"`
-	FriendlyName  string `xml:"friendlyName,omitempty"`
-	LastBindTime  string `xml:"lastBindTime,omitempty"`
-	LastAuthnTime string `xml:"lastAuthnTime,omitempty"`
-	LastAuthnId   string `xml:"lastAuthnId,omitempty"`
-}
-type vipResponseCredentialBindingDetail struct {
-	CredentialId     string                   `xml:"credentialId,omitempty"`
-	CredentialType   string                   `xml:"credentialType,omitempty"`
-	CredentialStatus string                   `xml:"credentialStatus,omitempty"`
-	BindingDetail    vipResponseBindingDetail `xml:"bindingDetail"`
-}
-
-type vipResponseGetUserInfo struct {
-	RequestId               string                               `xml:"requestId"`
-	Status                  string                               `xml:"status"`
-	StatusMessage           string                               `xml:"statusMessage"`
-	UserId                  string                               `xml:"userId"`
-	UserCreationTime        string                               `xml:"userCreationTime"`
-	UserStatus              string                               `xml:"userStatus"`
-	NumBindings             string                               `xml:"numBindings"`
-	CredentialBindingDetail []vipResponseCredentialBindingDetail `xml:"credentialBindingDetail"`
-}
-
-type userInfoResponseBody struct {
-	XMLName xml.Name `xml:"Envelope"`
-	Body    struct {
-		VipResponseGetUserInfo vipResponseGetUserInfo `xml:"GetUserInfoResponse"`
-	}
-}
-
-func parseUserInfoResponse() {
-	var response userInfoResponseBody
-	err := xml.Unmarshal([]byte(ExampleUserInfoResponse), &response)
-	//err = xml.Unmarshal(responseBytes, &response)
-	if err != nil {
-		fmt.Print(err)
-	}
-	fmt.Printf("%+v", response)
-}
-
 func exitsAndCanRead(fileName string, description string) ([]byte, error) {
 	if _, err := os.Stat(fileName); os.IsNotExist(err) {
 		return nil, err
@@ -116,7 +74,6 @@ func exitsAndCanRead(fileName string, description string) ([]byte, error) {
 
 func main() {
 	flag.Parse()
-	parseUserInfoResponse()
 
 	usr, err := user.Current()
 	if err != nil {
@@ -140,21 +97,9 @@ func main() {
 		panic(err)
 	}
 
-	tokenList, err := vipClient.GetActiveTokens(userName)
+	valid, err := vipClient.ValidateUserOTP(userName, *otpValue)
 	if err != nil {
 		panic(err)
-	}
-
-	//vipClient.VipServicesURL = *targetUrl
-	valid := false
-	for _, tokenId := range tokenList {
-		ok, err := vipClient.VerifySingleToken(tokenId, *otpValue)
-		if err != nil {
-			panic(err)
-		}
-		if ok {
-			valid = true
-		}
 	}
 	fmt.Printf("valid=%d", valid)
 	fmt.Println("done")
