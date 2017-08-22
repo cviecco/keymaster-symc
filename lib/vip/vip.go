@@ -85,33 +85,6 @@ const userInfoRequestTemplate = `<soapenv:Envelope xmlns:soapenv="http://schemas
    </soapenv:Body>
 </soapenv:Envelope>`
 
-const exampleUserInfoResponse = `<?xml version="1.0"?>
-<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
-  <S:Body>
-    <GetUserInfoResponse xmlns="https://schemas.symantec.com/vip/2011/04/vipuserservices">
-      <requestId>258aaa0361ea</requestId>
-      <status>0000</status>
-      <statusMessage>Success</statusMessage>
-      <userId>camilo_viecco1</userId>
-      <userCreationTime>2016-05-25T18:40:29.747Z</userCreationTime>
-      <userStatus>ACTIVE</userStatus>
-      <numBindings>1</numBindings>
-      <credentialBindingDetail>
-        <credentialId>AVT807113441</credentialId>
-        <credentialType>STANDARD_OTP</credentialType>
-        <credentialStatus>ENABLED</credentialStatus>
-        <bindingDetail>
-          <bindStatus>ENABLED</bindStatus>
-          <friendlyName>symentec-hw1</friendlyName>
-          <lastBindTime>2016-06-03T19:58:32.373Z</lastBindTime>
-          <lastAuthnTime>2017-08-03T21:58:22.090Z</lastAuthnTime>
-          <lastAuthnId>484374FC7EB7AA12</lastAuthnId>
-        </bindingDetail>
-      </credentialBindingDetail>
-    </GetUserInfoResponse>
-  </S:Body>
-</S:Envelope>`
-
 type vipResponseBindingDetail struct {
 	ReasonCode    string `xml:"bindStatus,omitempty"`
 	FriendlyName  string `xml:"friendlyName,omitempty"`
@@ -233,7 +206,6 @@ func (client *Client) VerifySingleToken(tokenID string, tokenValue int) (bool, e
 		return false, err
 	}
 	var response validateResponseBody
-	//err = xml.Unmarshal([]byte(responseText), &response)
 	err = xml.Unmarshal(responseBytes, &response)
 	if err != nil {
 		fmt.Print(err)
@@ -247,7 +219,6 @@ func (client *Client) VerifySingleToken(tokenID string, tokenValue int) (bool, e
 
 		fmt.Println(output)
 	*/
-	// {XMLName:{Space:http://schemas.xmlsoap.org/soap/envelope/ Local:Envelope} Body:{VipValidateResponse:{RequestId:12345 Version:2.0 Status:{ReasonCode:0000 StatusMessage:Success}}}}
 	switch response.Body.VipValidateResponse.Status.ReasonCode {
 	case "0000":
 		return true, nil
@@ -261,17 +232,13 @@ func (client *Client) GetActiveTokens(userID string) ([]string, error) {
 	requestID := genNewRequestID()
 	userInfoRequest := vipUserInfoRequest{RequestId: requestID,
 		UserId: userID}
-	/*
-		vipValidateRequest{RequestId: "12345",
-			TokenId: tokenID, OTP: tokenValue}
-	*/
+
 	tmpl, err := template.New("userInfo").Parse(userInfoRequestTemplate)
 	if err != nil {
 		panic(err)
 	}
 	var requestBuffer bytes.Buffer
 
-	//err = tmpl.Execute(os.Stdout, validateRequest)
 	err = tmpl.Execute(&requestBuffer, userInfoRequest)
 	if err != nil {
 		panic(err)
