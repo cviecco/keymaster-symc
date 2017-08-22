@@ -41,7 +41,7 @@ const validateRequestTemplate = `<?xml version="1.0" encoding="UTF-8" ?> <SOAP-E
         <SOAP-ENV:Body>
                 <ns1:Validate Version="2.0" Id="{{.RequestId}}"> 
                      <ns1:TokenId>{{.TokenId}}</ns1:TokenId> 
-                     <ns1:OTP>{{.OTP}}</ns1:OTP>
+                     <ns1:OTP>{{printf "%06d" .OTP}}</ns1:OTP>
                 </ns1:Validate>
         </SOAP-ENV:Body>
 </SOAP-ENV:Envelope>`
@@ -298,6 +298,10 @@ func (client *Client) GetActiveTokens(userID string) ([]string, error) {
 
 	//os.Stdout.Write(output)
 	fmt.Println(output)
-
 	return enabledTokenID, nil
 }
+
+/*
+func client *Client) GetActiveTokens(userID string, OTPValue int) {
+}
+*/
