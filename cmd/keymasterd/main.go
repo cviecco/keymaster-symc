@@ -30,6 +30,7 @@ import (
 	"html/template"
 	//"io"
 	"io/ioutil"
+	"log/syslog"
 	//"net"
 	"net/http"
 	//"net/url"
@@ -1618,6 +1619,14 @@ func main() {
 		panic(err)
 	}
 	logger.Debugf(3, "After load verify")
+
+	_, err = syslog.Dial("", "",
+		syslog.LOG_WARNING|syslog.LOG_DAEMON, "demotag")
+	if err != nil {
+		log.Fatal(err)
+	}
+	//fmt.Fprintf(sysLog, "This is a daemon warning with demotag.")
+	//sysLog.Emerg("And this is a daemon emergency with demotag.")
 
 	adminDashboard := newAdminDashboard(realLogger)
 	// Expose the registered metrics via HTTP.
