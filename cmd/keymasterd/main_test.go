@@ -11,6 +11,7 @@ import (
 	"github.com/Symantec/keymaster/lib/webapi/v0/proto"
 	"io"
 	"io/ioutil"
+	"log/syslog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -220,6 +221,13 @@ func TestSuccessFullSigningSSH(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Remove(passwdFile.Name()) // clean up
+
+	sysLog, err = syslog.Dial("", "",
+		syslog.LOG_DEBUG|syslog.LOG_USER, "keymasterd")
+	if err != nil {
+		t.Fatal(err)
+		//panic(err)
+	}
 
 	// Get request
 	req, err := createBasicAuthRequstWithKeyBody("POST", "/certgen/username", "username", "password", testUserSSHPublicKey)

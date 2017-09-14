@@ -34,6 +34,7 @@ import (
 	//"net"
 	"net/http"
 	//"net/url"
+	//stdlog "log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -117,6 +118,7 @@ var (
 		[]string{"username", "type"},
 	)
 	logger log.DebugLogger
+	sysLog *syslog.Writer
 )
 
 func getHostIdentity() (string, error) {
@@ -598,6 +600,10 @@ func (state *RuntimeState) postAuthSSHCertHandler(w http.ResponseWriter, r *http
 		return
 
 	}
+	//Log the cert
+
+	sysLog.Notice("New SSH certificate ")
+
 	w.Header().Set("Content-Disposition", `attachment; filename="id_rsa-cert.pub"`)
 	w.WriteHeader(200)
 	fmt.Fprintf(w, "%s", cert)
@@ -1620,10 +1626,11 @@ func main() {
 	}
 	logger.Debugf(3, "After load verify")
 
-	_, err = syslog.Dial("", "",
-		syslog.LOG_WARNING|syslog.LOG_DAEMON, "demotag")
+	sysLog, err = syslog.Dial("", "",
+		syslog.LOG_WARNING|syslog.LOG_DAEMON, "keymasterd")
 	if err != nil {
-		log.Fatal(err)
+		//log.Fatal(err)
+		panic(err)
 	}
 	//fmt.Fprintf(sysLog, "This is a daemon warning with demotag.")
 	//sysLog.Emerg("And this is a daemon emergency with demotag.")
