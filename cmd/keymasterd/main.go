@@ -601,8 +601,10 @@ func (state *RuntimeState) postAuthSSHCertHandler(w http.ResponseWriter, r *http
 
 	}
 	//Log the cert
-
-	sysLog.Notice("New SSH certificate ")
+	logString := fmt.Sprintf("Gen Cert user=%s", targetUser)
+	if sysLog != nil {
+		sysLog.Notice(logString)
+	}
 
 	w.Header().Set("Content-Disposition", `attachment; filename="id_rsa-cert.pub"`)
 	w.WriteHeader(200)
