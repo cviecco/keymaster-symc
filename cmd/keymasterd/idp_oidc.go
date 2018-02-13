@@ -145,6 +145,14 @@ func (state *RuntimeState) idpOpenIDCAuthorizationHandler(w http.ResponseWriter,
 	if state.sendFailureToClientIfLocked(w, r) {
 		return
 	}
+	origin := r.Header.Get("Origin")
+	if r.Method == "OPTIONS" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Cotrol-Allow-Methods", "POST, GET, OPTIONS")
+		w.Header().Set("Access-Cotrol-Allow-Credentials", "true")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
 	// We are now at exploration stage... and will require pre-authed clients.
 	authUser, _, err := state.checkAuth(w, r, state.getRequiredWebUIAuthLevel())
@@ -164,6 +172,7 @@ func (state *RuntimeState) idpOpenIDCAuthorizationHandler(w http.ResponseWriter,
 		return
 	}
 	logger.Printf("Auth request =%+v", r)
+
 	//logger.Printf("IDC auth from=%v", r.Form)
 	if r.Form.Get("response_type") != "code" {
 		logger.Debugf(1, "Invalid response_type")
@@ -202,6 +211,26 @@ func (state *RuntimeState) idpOpenIDCAuthorizationHandler(w http.ResponseWriter,
 		state.writeFailureResponse(w, r, http.StatusBadRequest, "redirect string not valid or clientID uknown")
 		return
 	}
+	if len(origin) > 1 {
+		redirectUrl, err := url.Parse(requestRedirectURLString)
+		if err != nil {
+			logger.Printf("%v", err)
+			state.writeFailureResponse(w, r, http.StatusBadRequest, "cannot parse redirect URL")
+			return
+		}
+		originUrl, err := url.Parse(origin)
+		if err != nil {
+			logger.Printf("%v", err)
+			state.writeFailureResponse(w, r, http.StatusBadRequest, "cannot parse orign as url")
+			return
+		}
+		if originUrl.Hostname() != redirectUrl.Hostname() {
+			logger.Printf("returning Forbiden for mismatch on origin and redirect")
+			state.writeFailureResponse(w, r, http.StatusUnauthorized, "Origin error")
+			return
+		}
+
+	}
 
 	//Dont check for now
 	signerOptions := (&jose.SignerOptions{}).WithType("JWT")
@@ -232,6 +261,10 @@ func (state *RuntimeState) idpOpenIDCAuthorizationHandler(w http.ResponseWriter,
 
 	redirectPath := fmt.Sprintf("%s?code=%s&state=%s", requestRedirectURLString, raw, url.QueryEscape(r.Form.Get("state")))
 	logger.Debugf(3, "auth request is valid, redirect path=%s", redirectPath)
+	if len(origin) > 1 {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Cotrol-Allow-Credentials", "true")
+	}
 	http.Redirect(w, r, redirectPath, 302)
 	//logger.Printf("raw jwt =%v", raw)
 }

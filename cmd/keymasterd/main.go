@@ -538,7 +538,7 @@ func (state *RuntimeState) updateAuthCookieAuthlevel(w http.ResponseWriter, r *h
 // Inspired by http://stackoverflow.com/questions/21936332/idiomatic-way-of-requiring-http-basic-auth-in-go
 func (state *RuntimeState) checkAuth(w http.ResponseWriter, r *http.Request, requiredAuthType int) (string, int, error) {
 	// Check csrf
-	if r.Method != "GET" {
+	if r.Method != "GET" && r.URL.Path != idpOpenIDCAuthorizationPath {
 		referer := r.Referer()
 		if len(referer) > 0 && len(r.Host) > 0 {
 			logger.Debugf(3, "ref =%s, host=%s", referer, r.Host)
