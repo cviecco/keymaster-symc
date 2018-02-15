@@ -148,8 +148,12 @@ func (state *RuntimeState) idpOpenIDCAuthorizationHandler(w http.ResponseWriter,
 	origin := r.Header.Get("Origin")
 	if r.Method == "OPTIONS" {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Cotrol-Allow-Methods", "POST, GET, OPTIONS")
-		w.Header().Set("Access-Cotrol-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		accessControlHeaders := r.Header.Get("Access-Control-Request-Headers")
+		if len(accessControlHeaders) > 0 {
+			w.Header().Set("Access-Control-Allow-Headers", accessControlHeaders)
+		}
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -263,7 +267,7 @@ func (state *RuntimeState) idpOpenIDCAuthorizationHandler(w http.ResponseWriter,
 	logger.Debugf(3, "auth request is valid, redirect path=%s", redirectPath)
 	if len(origin) > 1 {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Cotrol-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 	}
 	http.Redirect(w, r, redirectPath, 302)
 	//logger.Printf("raw jwt =%v", raw)
