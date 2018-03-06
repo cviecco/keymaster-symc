@@ -150,17 +150,33 @@ func initFileDBSQLite(dbFilename string, currentDB *sql.DB) (*sql.DB, error) {
 
 func (state *RuntimeState) BackgroundDBCopy(initialSleep time.Duration) {
 	time.Sleep(initialSleep)
+	failureSleep := time.Second * 120
+	successSleep := time.Second * 300
 	for {
 		logger.Printf("starting db copy")
 		err := copyDBIntoSQLite(state.db, state.cacheDB, "sqlite")
 		if err != nil {
 			logger.Printf("err='%s'", err)
+			time.Sleep(failureSleep)
+			continue
 		} else {
 			logger.Printf("db copy success")
 		}
-		cleanupDBData(state.db)
-		cleanupDBData(state.cacheDB)
-		time.Sleep(time.Second * 300)
+		err = cleanupDBData(state.db)
+		if err != nil {
+			logger.Printf("err='%s'", err)
+			time.Sleep(failureSleep)
+			continue
+
+		}
+		err = cleanupDBData(state.cacheDB)
+		if err != nil {
+			logger.Printf("err='%s'", err)
+			time.Sleep(failureSleep)
+			continue
+
+		}
+		time.Sleep(successSleep)
 	}
 
 }
@@ -267,6 +283,26 @@ func copyDBIntoSQLite(source, destination *sql.DB, destinationType string) error
 		return err
 	}
 	return nil
+}
+
+func pingDB(db *sql.DB, timeout time.Duration) error {
+	ch := make(chan error, 1)
+	go func() {
+		err := db.Ping()
+		if timeout == 0 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		ch <- err
+		close(ch)
+	}()
+	select {
+	case err := <-ch:
+		return err
+	case <-time.After(timeout):
+		logger.Printf("GOT a DB ping timeout")
+		err := errors.New("DB ping timeout")
+		return err
+	}
 }
 
 var getUsersStmt = map[string]string{
