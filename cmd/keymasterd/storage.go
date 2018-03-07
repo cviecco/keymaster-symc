@@ -154,14 +154,19 @@ func (state *RuntimeState) BackgroundDBCopy(initialSleep time.Duration) {
 	successSleep := time.Second * 300
 	for {
 		logger.Printf("starting db copy")
-		err := copyDBIntoSQLite(state.db, state.cacheDB, "sqlite")
+		err := pingDB(state.db, time.Second*5)
 		if err != nil {
 			logger.Printf("err='%s'", err)
 			time.Sleep(failureSleep)
 			continue
-		} else {
-			logger.Printf("db copy success")
 		}
+		err = copyDBIntoSQLite(state.db, state.cacheDB, "sqlite")
+		if err != nil {
+			logger.Printf("err='%s'", err)
+			time.Sleep(failureSleep)
+			continue
+		}
+		logger.Debugf(1, "db copy (part1) success")
 		err = cleanupDBData(state.db)
 		if err != nil {
 			logger.Printf("err='%s'", err)
@@ -176,6 +181,7 @@ func (state *RuntimeState) BackgroundDBCopy(initialSleep time.Duration) {
 			continue
 
 		}
+		logger.Printf("db copy success")
 		time.Sleep(successSleep)
 	}
 
