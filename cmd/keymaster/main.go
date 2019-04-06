@@ -22,11 +22,11 @@ import (
 	"github.com/Symantec/keymaster/lib/client/util"
 )
 
-const DefaultSSHKeysLocation = "/.ssh/"
-const DefaultTLSKeysLocation = "/.ssl/"
+const defaultSSHKeysLocation = "/.ssh/"
+const defaultTLSKeysLocation = "/.ssl/"
 
 var (
-	// Must be a global variable in the data segment so that the build
+	// Version must be a global variable in the data segment so that the build
 	// process can inject the version number on the fly when building the
 	// binary. Use only from the Usage() function.
 	Version = "No version provided"
@@ -39,7 +39,7 @@ var (
 	cliUsername    = flag.String("username", "", "username for keymaster")
 	checkDevices   = flag.Bool("checkDevices", false, "CheckU2F devices in your system")
 	cliFilePrefix  = flag.String("fileprefix", "", "Prefix for the output files")
-	FilePrefix     = "keymaster"
+	filePrefix     = "keymaster"
 )
 
 func getUserHomeDir() (homeDir string) {
@@ -133,13 +133,13 @@ func setupCerts(
 	configContents config.AppConfigFile,
 	logger log.DebugLogger) {
 	// create dirs
-	sshKeyPath := filepath.Join(homeDir, DefaultSSHKeysLocation, FilePrefix)
+	sshKeyPath := filepath.Join(homeDir, defaultSSHKeysLocation, filePrefix)
 	sshConfigPath, _ := filepath.Split(sshKeyPath)
 	err := os.MkdirAll(sshConfigPath, 0700)
 	if err != nil {
 		logger.Fatal(err)
 	}
-	tlsKeyPath := filepath.Join(homeDir, DefaultTLSKeysLocation, FilePrefix)
+	tlsKeyPath := filepath.Join(homeDir, defaultTLSKeysLocation, filePrefix)
 	tlsConfigPath, _ := filepath.Split(tlsKeyPath)
 	err = os.MkdirAll(tlsConfigPath, 0700)
 	if err != nil {
@@ -147,7 +147,7 @@ func setupCerts(
 	}
 
 	// get signer
-	tempPrivateKeyPath := filepath.Join(homeDir, DefaultSSHKeysLocation, "keymaster-temp")
+	tempPrivateKeyPath := filepath.Join(homeDir, defaultSSHKeysLocation, "keymaster-temp")
 	signer, tempPublicKeyPath, err := util.GenKeyPair(
 		tempPrivateKeyPath, userName+"@keymaster", logger)
 	if err != nil {
@@ -199,7 +199,7 @@ func setupCerts(
 		logger.Fatal(err)
 	}
 	// Now handle the key in the tls directory
-	tlsPrivateKeyName := filepath.Join(homeDir, DefaultTLSKeysLocation, FilePrefix+".key")
+	tlsPrivateKeyName := filepath.Join(homeDir, defaultTLSKeysLocation, filePrefix+".key")
 	os.Remove(tlsPrivateKeyName)
 	err = os.Symlink(sshKeyPath, tlsPrivateKeyName)
 	if err != nil {
@@ -252,6 +252,8 @@ func setupCerts(
 	}
 }
 
+// Usage is just an enhanced version of the std flags output, but adding the
+// command name and the version number
 func Usage() {
 	fmt.Fprintf(
 		os.Stderr, "Usage of %s (version %s):\n", os.Args[0], Version)
@@ -282,10 +284,10 @@ func main() {
 	}
 
 	if len(config.Base.FilePrefix) > 0 {
-		FilePrefix = config.Base.FilePrefix
+		filePrefix = config.Base.FilePrefix
 	}
 	if *cliFilePrefix != "" {
-		FilePrefix = *cliFilePrefix
+		filePrefix = *cliFilePrefix
 	}
 
 	setupCerts(rootCAs, userName, homeDir, config, logger)
