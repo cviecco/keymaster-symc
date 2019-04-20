@@ -46,7 +46,7 @@ var (
 	roundRobinDialer = flag.Bool("roundRobinDialer", false,
 		"If true, use the smart round-robin dialer")
 
-	FilePrefix = "keymaster"
+	filePrefix = "keymaster"
 	dialer     libnet.Dialer
 )
 
